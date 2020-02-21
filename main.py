@@ -5,6 +5,7 @@
 # Email: 406728295@qq.com
 # Time: 2020/2/13 8:05 下午
 # DESC:
+import configparser
 import abc
 import random
 import time
@@ -179,9 +180,11 @@ class Application:
 
 
 if __name__ == '__main__':
-    base_site = 'https://blog.csdn.net/ClassmateLin/article/list/'
-    site = CSDNSite(base_site, 2)
-    visitor = RequestVisitor(order_no='你的orderno', secret='你的secret')
+    conf = configparser.ConfigParser()
+    conf.read('config.ini')
+    base_site = conf.get('conf', 'blog')
+    site = CSDNSite(base_site, conf.get('conf', 'page'))
+    visitor = RequestVisitor(order_no=conf.get('conf', 'order_no'), secret=conf.get('conf', 'secret'))
     app = Application(visitor, site)
     app.run()
     for i in range(20):

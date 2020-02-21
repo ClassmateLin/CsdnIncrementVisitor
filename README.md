@@ -4,19 +4,22 @@
 
 - [讯代理官网](http://www.xdaili.cn?invitationCode=A158EF9DD1C6431AB0F049A660B0B27E)，购买动态IP，记录order_no和secret。
 
-- 修改`main.py`中代码段：
+- 修改`config.ini`中代码的配置
+```ini
+[conf]
+#订单号
+order_no=你的订单号
 
-  ```python
-  if __name__ == '__main__':
-      base_site = 'https://blog.csdn.net/你的博客名/article/list/'
-      site = CSDNSite(base_site, 2) // 文章列表的最大页数
-      visitor = RequestVisitor(order_no='你的订单号', secret='你的secret')
-      app = Application(visitor, site)
-      app.run()
-      for i in range(20): // 线程数
-          Thread(target=app.run).start()
-  
-  ```
+#秘钥
+secret=你的博客
+
+#博客文章列表
+blog=https://blog.csdn.net/你的博客名/article/list/
+
+#博客页数， 你的博客列表有多少页填多少
+page=2
+```
+
 
   
 
