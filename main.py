@@ -86,7 +86,8 @@ class RequestVisitor(Visitor):
         self._refresh_headers()
         resp = requests.get(url, headers=self._headers, proxies=self._proxy, verify=False, allow_redirects=False,
                             timeout=5)
-        print(resp.status_code)
+        if resp.status_code == 200:
+            print('访问量+1...')
 
 
 class Site(metaclass=abc.ABCMeta):
@@ -175,17 +176,17 @@ class Application:
                 try:
                     self._v.visit(url)
                 except Exception as e:
-                    print(e.args)
+                    print('访问异常，连接代理服务器失败...')
                     time.sleep(0.2)
 
 
 if __name__ == '__main__':
     conf = configparser.ConfigParser()
-    conf.read('config.ini')
+    conf.read('config.ini', 'utf-8-sig')
     base_site = conf.get('conf', 'blog')
-    site = CSDNSite(base_site, conf.get('conf', 'page'))
+    site = CSDNSite(base_site, int(conf.get('conf', 'page')))
     visitor = RequestVisitor(order_no=conf.get('conf', 'order_no'), secret=conf.get('conf', 'secret'))
     app = Application(visitor, site)
-    app.run()
-    for i in range(20):
+    print('开始刷阅读量...')
+    for i in range(int(conf.get('conf', 'thread_num'))):
         Thread(target=app.run).start()

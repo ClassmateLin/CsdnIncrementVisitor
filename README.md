@@ -18,20 +18,14 @@ blog=https://blog.csdn.net/你的博客名/article/list/
 
 #博客页数， 你的博客列表有多少页填多少
 page=2
+
+#线程数
+thread_num=5
 ```
 
-
-  
 
 - `pip install -r requirements.txt`安装依赖
 - `python main.py`运行。
 
+- 也可以下载二进制包，修改config.ini文件即可。
 
-
-```abb2878586f049b6ad069a33a1858632
-ZF20202191471gpt5kN
-```
-
-```
-abb2878586f049b6ad069a33a1858632
-```
