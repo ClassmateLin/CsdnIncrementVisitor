@@ -14,7 +14,6 @@ import re
 import json
 
 
-
 class BaseProxy:
     """
     代理基类
@@ -53,6 +52,7 @@ class BaseProxy:
         try:
             res = requests.get(url, proxies=proxy, timeout=3).json()
             if 'ip' in res:
+                print(res['ip'])
                 return True
         except Exception as e:
             return False
@@ -183,6 +183,20 @@ class FreeProxy(BaseProxy):
             return []
 
 
+class QuickProxy(SixSixProxy):
+    """
+    快代理
+    """
+    def __init__(self, page=5):
+        """
+        :param page:
+        """
+        super().__init__(page=5)
+        
+
 if __name__ == '__main__':
-    free_proxy = FreeProxy()
-    print(free_proxy.get_all())
+    free_proxy = SixSixProxy()
+    proxy_list = free_proxy.get_all()
+    for p in proxy_list:
+        print(p)
+        free_proxy.check_proxy(p)

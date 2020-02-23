@@ -19,15 +19,29 @@ import threading
 
 from app.background import get_backgound
 from app.article import CSDNArticle
-from app.proxy import FreeProxy
+from app.proxy import FreeProxy, XiCiProxy, SixSixProxy
 from app.visitor import RequestVisitor
+
+
+PROXY_TITLE_MAP = {
+    1: '免费代理',
+    2: '66代理',
+    3: '西刺代理'
+}
+
+PROXY_CLASS_MAP = {
+    1: FreeProxy,
+    2: SixSixProxy,
+    3: XiCiProxy
+}
 
 
 MESSAGE_TITLE = '提示'    # 消息框标题
 
 LABEL_STYLE_SHEET = "QLabel{border:2px groove gray;border-radius:10px;padding:2px 4px;color:black;}"
 START_BUTTON_STYLE_SHEET = "QPushButton{border:2px groove gray;border-radius:10px;padding:2px 4px;color:green;}"
-STOP_BUTTON_STYLE_SHEET = "QPushButton{border:2px groove gray;border-radius:10px;padding:2px 4px;color:red;}"
+STOP_BUTTON_STYLE_SHEET = "QPushButton{border:2px groove gray;border-radius:10px;padding:2px 4px;color:yellow;}"
+DESTROY_BUTTON_STYLE_SHEET = "QPushButton{border:2px groove gray;border-radius:10px;padding:2px 4px;color:red;}"
 TEXT_BROWSER_STYLE_SHEET = "QTextBrowser{border:2px groove gray;border-radius:10px;padding:2px 4px;color:black;}"
 TABLE_STYLE_SHEET = "QTableWidget{border:2px groove gray;border-radius:10px;padding:2px 4px;color:black;}"
 LINE_EDIT_STYLE_SHEET = "QLineEdit{border:2px groove gray;border-radius:10px;padding:2px 4px;}"
@@ -50,6 +64,7 @@ class Window(QWidget):
 
         self._start_btn = None   # 开始按钮
         self._stop_btn = None    # 结束按钮
+        self._destroy_btn = None   # 退出按钮
 
         self._blog_name_input = None  # 博客名称输入
         self._thread_num_input = None   # 线程数输入
@@ -61,14 +76,16 @@ class Window(QWidget):
 
         self.setStyleSheet(WIDGET_STYLE_SHEET)
         self.resize(800, 600)
+
         self.setup_ui()  # 设置控件
-        self.setFixedSize(self.width(), self.height())
 
         self._init_log_text()
         self._start_btn.clicked.connect(self.start)  # 开始
         self._stop_btn.clicked.connect(self.stop)  # 终止
+        self._destroy_btn.clicked.connect(self.destroy)
 
         self._is_start = False  # 标志是否已经开始
+        self._running = True   # 标识是否运行改为, False子线程会退出
 
         self.table_read_num_signal.connect(self._update_table_read_num)
         self.log_text_signal.connect(self._show_to_log)
@@ -93,7 +110,7 @@ class Window(QWidget):
         _translate = QtCore.QCoreApplication.translate
         w_layout = QVBoxLayout()  # 全局布局采用垂直布局
 
-        h_layout = QHBoxLayout()
+        h_layout1 = QHBoxLayout()
 
         blog_name_label = QLabel('博客名称')
         blog_name_label.setStyleSheet(LABEL_STYLE_SHEET)
@@ -131,29 +148,38 @@ class Window(QWidget):
         self._visit_space_input.setValidator(visit_space_validator)
         self._visit_space_input.setMaxLength(2)
 
+        h_layout2 = QHBoxLayout()
+
         self._start_btn = QPushButton('开始')   # 开始刷访问量按钮
         self._start_btn.setStyleSheet(START_BUTTON_STYLE_SHEET)
 
-        self._stop_btn = QPushButton('退出')    # 停止刷访问量按钮
+        self._stop_btn = QPushButton('停止')    # 停止刷访问量按钮
         self._stop_btn.setStyleSheet(STOP_BUTTON_STYLE_SHEET)
 
-        h_layout.addWidget(blog_name_label)
-        h_layout.addWidget(self._blog_name_input)
+        self._destroy_btn = QPushButton('退出')
+        self._destroy_btn.setStyleSheet(DESTROY_BUTTON_STYLE_SHEET)
 
-        h_layout.addWidget(thread_num_label)
-        h_layout.addWidget(self._thread_num_input)
+        h_layout1.addWidget(blog_name_label)
+        h_layout1.addWidget(self._blog_name_input)
 
-        h_layout.addWidget(while_num_label)
-        h_layout.addWidget(self._while_num_input)
+        h_layout1.addWidget(thread_num_label)
+        h_layout1.addWidget(self._thread_num_input)
 
-        h_layout.addWidget(visit_space_label)
-        h_layout.addWidget(self._visit_space_input)
+        h_layout1.addWidget(while_num_label)
+        h_layout1.addWidget(self._while_num_input)
 
-        h_layout.addWidget(self._start_btn)
-        h_layout.addWidget(self._stop_btn)
+        h_layout1.addWidget(visit_space_label)
+        h_layout1.addWidget(self._visit_space_input)
 
-        h_widget = QWidget()
-        h_widget.setLayout(h_layout)
+        h_layout2.addWidget(self._start_btn)
+        h_layout2.addWidget(self._stop_btn)
+        h_layout2.addWidget(self._destroy_btn)
+
+        h_widget1 = QWidget()
+        h_widget1.setLayout(h_layout1)
+
+        h_widget2 = QWidget()
+        h_widget2.setLayout(h_layout2)
 
         v_layout = QVBoxLayout()
 
@@ -191,7 +217,8 @@ class Window(QWidget):
         v_layout.addWidget(self._articles_table)
         v_layout.addWidget(log_text_label)
         v_layout.addWidget(self._log_text_browser)
-        w_layout.addWidget(h_widget)
+        w_layout.addWidget(h_widget1)
+        w_layout.addWidget(h_widget2)
         w_layout.addWidget(v_widget)
 
         self.setLayout(w_layout)
@@ -222,7 +249,7 @@ class Window(QWidget):
             QMessageBox.information(self, MESSAGE_TITLE, '程序已在运行！', QMessageBox.Yes)
             return
         self._is_start = True
-
+        self._running = True
         self._get_proxy()
 
         self._log_text_browser.append('正在获取博客文章列表...')
@@ -243,33 +270,51 @@ class Window(QWidget):
         :param articles:
         :return:
         """
+        while_num = int(self._while_num_input.text())
+        count = 0
+        while self._running and count < while_num:
+            self._visit_single(articles)
+            count += 1
+
+    def _visit_single(self, articles):
+        """
+        访问文章
+        :param articles:
+        :return:
+        """
         visitor = RequestVisitor()
         for proxy in self._proxies:
             for i in range(len(articles)):
+                if not self._running:
+                    self.log_text_signal.emit('停止线程:{}...'.format(str(threading.currentThread().ident)))
+                    return
                 is_visit = random.choice([True, False])
                 if is_visit:
-                    visit_num = random.randint(1, 5)
-                    for j in range(visit_num):
-                        flag = visitor.visit(articles[i]['url'], proxy)
-                        if not flag:
-                            self._lock.acquire()
-                            if len(self._proxies) > 0:
-                                self._proxies.remove(proxy)
-                            if not self._proxies:
-                                self._get_proxy()
-                            self._lock.release()
-                            break
-                        read_num = int(self._articles_table.item(i, 2).text()) + 1
-                        log_text = '文章:{}访问量+1, 当前访问量:{}'.format(articles[i]['title'], str(read_num))
-                        self.log_text_signal.emit(log_text)
+                    raw_read_num = int(self._articles_table.item(i, 2).text())  # 文章列表显示的访问量
 
-                        self.table_read_num_signal.emit({
-                            'row': i,
-                            'col': 2,
-                            'text': str(read_num)
-                        })
-                        space = int(self._visit_space_input.text())
-                        time.sleep(space)
+                    read_num = visitor.visit(articles[i]['url'], proxy)
+                    if read_num == 0:  # 表示访问失败, 移除代理
+                        self._lock.acquire()
+                        if len(self._proxies) > 0:
+                            self._proxies.remove(proxy)
+                        if not self._proxies:
+                            self._get_proxy()
+                        self._lock.release()
+                        break
+                    if read_num == raw_read_num:  # 重复IP在60秒内访问同一篇文章不会增加访问量
+                        self.log_text_signal.emit('访问量增加失败, 同个IP在60秒内访问相同IP不增加访问量!')
+                        continue
+                    log_text = '文章:{}访问量+1, 当前访问量:{}, 原访问量:{}'.format(articles[i]['title'],
+                                                                      str(read_num), str(raw_read_num))
+                    self.log_text_signal.emit(log_text)
+
+                    self.table_read_num_signal.emit({
+                        'row': i,
+                        'col': 2,
+                        'text': str(read_num)
+                    })
+                    space = int(self._visit_space_input.text())
+                    time.sleep(space)
 
     def _get_proxy(self, page=5):
         """
@@ -309,7 +354,18 @@ class Window(QWidget):
         self._log_text_browser.append(text)
 
     def stop(self):
-        os._exit(5)
+        self._running = False
+        self._is_start = False
+        QMessageBox.information(self, MESSAGE_TITLE, '程序已停止！', QMessageBox.Yes)
+
+    def destroy(self):
+        """
+        销毁应用
+        :return:
+        """
+        is_ok = QMessageBox.question(self, MESSAGE_TITLE, '确认退出程序?', QMessageBox.Yes | QMessageBox.No)
+        if is_ok == QMessageBox.Yes:
+            os._exit(5)
 
 
 def start_window():

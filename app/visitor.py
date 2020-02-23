@@ -7,8 +7,11 @@
 # DESC:
 import abc
 import requests
+import re
 import random
 import urllib3
+from bs4 import BeautifulSoup
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
@@ -69,8 +72,20 @@ class RequestVisitor(Visitor):
             resp = requests.get(url, headers=self._headers, proxies=proxy, verify=False, allow_redirects=False,
                                 timeout=5)
             if resp.status_code == 200:
-                return True
-            return False
-        except Exception as e:
-            return False
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                read_num_text = soup.find('span', {'class': 'read-count'}).text
+                read_num = re.findall(r"\d+", read_num_text)[0]
+                return int(read_num)
+            return 0
 
+        except Exception as e:
+            print(e.args)
+            return 0
+
+
+if __name__ == '__main__':
+    visitor = RequestVisitor()
+    res = visitor.visit(url='https://blog.csdn.net/ClassmateLin/article/details/104441828', proxy={
+        'http': 'http://185.220.101.10:3128'
+    })
+    print(res)
