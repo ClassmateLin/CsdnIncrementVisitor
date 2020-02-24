@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 import execjs
 import re
 import json
+import time
 
 
 class BaseProxy:
@@ -33,7 +34,7 @@ class BaseProxy:
         :return:
         """
         if not self._proxies:
-            return None
+            return []
         return random.choice(self._proxies)
 
     def get_all(self):
@@ -163,6 +164,7 @@ class FreeProxy(BaseProxy):
     def _get_proxies(self):
         proxies = []
         url = "http://proxylist.fatezero.org/proxy.list"
+        temp_set = set()
         try:
             proxy_list = requests.get(url=url, headers=type(self).headers)
             lines = proxy_list.text.split('\n')
@@ -172,31 +174,81 @@ class FreeProxy(BaseProxy):
                 except Exception as e:
                     print(e.args)
                     continue
+                if content['host'] in temp_set:
+                    continue
                 proxy = {
                     content['type']: '{}://{}:{}'.format(content['type'], content['host'], content['port'])
                 }
                 proxies.append(proxy)
-
+                temp_set.add(content['host'])
             return proxies
         except Exception as e:
             print(e.args)
             return []
 
 
-class QuickProxy(SixSixProxy):
+class QuickProxy(BaseProxy):
     """
-    快代理
+    快代理 https://www.kuaidaili.com/
     """
-    def __init__(self, page=5):
+    def __init__(self, page=10):
         """
         :param page:
         """
-        super().__init__(page=5)
-        
+        super().__init__(page)
+        self._base_url = 'https://www.kuaidaili.com/free/inha/{}/'
+        self._proxies = self._get_proxies()
+
+    def _get_proxies(self):
+        page = 1
+        proxies = []
+        while page < self._page:
+            url = self._base_url.format(str(page))
+            html_text = self._get_html_text(url)
+            temp_proxies = self._parse_html_text(html_text)
+            proxies.extend(temp_proxies)
+            page += 1
+            time.sleep(0.5)
+        return proxies
+
+    def _get_html_text(self, url):
+        """
+        获取页面文本
+        :param url:
+        :return:
+        """
+        try:
+            return requests.get(url=url).text
+        except Exception as e:
+            print(e.args)
+
+    def _parse_html_text(self, text):
+        """
+        解析网页
+        :param text:
+        :return:
+        """
+        if text is None:
+            print('text is None!')
+            return list()
+
+        proxies = list()
+        soup = BeautifulSoup(text, 'html.parser')
+        tr_list = soup.find_all('tr')
+        for tr in tr_list:
+            td_list = tr.find_all_next('td')
+            ip = td_list[0].text
+            port = td_list[1].text
+            protocol = td_list[3].text.strip().lower()
+            proxy = {
+                protocol: '{}://{}:{}'.format(protocol, ip, port)
+            }
+            proxies.append(proxy)
+        return proxies
+
 
 if __name__ == '__main__':
-    free_proxy = SixSixProxy()
+    free_proxy = QuickProxy()
     proxy_list = free_proxy.get_all()
-    for p in proxy_list:
-        print(p)
-        free_proxy.check_proxy(p)
+    print(proxy_list)
+    print(len(proxy_list))

@@ -9,27 +9,31 @@ import os
 import sys
 import random
 import time
-from PyQt5.QtWidgets import QLineEdit, QLabel, QPushButton, QVBoxLayout, QHBoxLayout
+from PyQt5.QtWidgets import QLineEdit, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QComboBox
 from PyQt5.QtWidgets import QWidget, QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView, QTextBrowser
 from PyQt5.QtGui import QIntValidator, QFont
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import QMessageBox, QDesktopWidget, QApplication
 from PyQt5.QtCore import pyqtSignal
 import threading
-
+import queue
 from app.background import get_backgound
 from app.article import CSDNArticle
-from app.proxy import FreeProxy, XiCiProxy, SixSixProxy
+from app.proxy import FreeProxy, XiCiProxy, SixSixProxy, QuickProxy
 from app.visitor import RequestVisitor
 
+PROXY_LIST = ['快代理', '免费代理', '66代理', '西刺代理']
+VISIT_MODEL = ['无界面访问', '浏览器访问(需安装驱动)']
 
 PROXY_TITLE_MAP = {
+    0: '快代理',
     1: '免费代理',
     2: '66代理',
     3: '西刺代理'
 }
 
 PROXY_CLASS_MAP = {
+    0: QuickProxy,
     1: FreeProxy,
     2: SixSixProxy,
     3: XiCiProxy
@@ -40,6 +44,7 @@ MESSAGE_TITLE = '提示'    # 消息框标题
 
 LABEL_STYLE_SHEET = "QLabel{border:2px groove gray;border-radius:10px;padding:2px 4px;color:black;}"
 START_BUTTON_STYLE_SHEET = "QPushButton{border:2px groove gray;border-radius:10px;padding:2px 4px;color:green;}"
+PROXY_BUTTON_STYLE_SHEET = "QPushButton{border:2px groove gray;border-radius:10px;padding:2px 4px;color:black;}"
 STOP_BUTTON_STYLE_SHEET = "QPushButton{border:2px groove gray;border-radius:10px;padding:2px 4px;color:yellow;}"
 DESTROY_BUTTON_STYLE_SHEET = "QPushButton{border:2px groove gray;border-radius:10px;padding:2px 4px;color:red;}"
 TEXT_BROWSER_STYLE_SHEET = "QTextBrowser{border:2px groove gray;border-radius:10px;padding:2px 4px;color:black;}"
@@ -47,6 +52,7 @@ TABLE_STYLE_SHEET = "QTableWidget{border:2px groove gray;border-radius:10px;padd
 LINE_EDIT_STYLE_SHEET = "QLineEdit{border:2px groove gray;border-radius:10px;padding:2px 4px;}"
 WIDGET_STYLE_SHEET = "QWidget{color:gray;}"
 TITLE_STYLE_SHEET = "QLabel{padding:2px 4px;color:black;}"
+CHECK_BOX_SHEET = "QComboBox{border:2px groove gray;border-radius:10px;padding:2px 4px;color:black;}"
 
 
 class Window(QWidget):
@@ -65,6 +71,7 @@ class Window(QWidget):
         self._start_btn = None   # 开始按钮
         self._stop_btn = None    # 结束按钮
         self._destroy_btn = None   # 退出按钮
+        self._proxy_btn = None  # 获取代理
 
         self._blog_name_input = None  # 博客名称输入
         self._thread_num_input = None   # 线程数输入
@@ -73,6 +80,10 @@ class Window(QWidget):
 
         self._articles_table = None     # 文章表格
         self._log_text_browser = None   # 文本显示
+
+        self._proxy_input = None
+        self._proxy_check_box = None
+        self._visit_model_check_box = None
 
         self.setStyleSheet(WIDGET_STYLE_SHEET)
         self.resize(800, 600)
@@ -83,6 +94,7 @@ class Window(QWidget):
         self._start_btn.clicked.connect(self.start)  # 开始
         self._stop_btn.clicked.connect(self.stop)  # 终止
         self._destroy_btn.clicked.connect(self.destroy)
+        self._proxy_btn.clicked.connect(self._on_get_proxy)
 
         self._is_start = False  # 标志是否已经开始
         self._running = True   # 标识是否运行改为, False子线程会退出
@@ -90,8 +102,25 @@ class Window(QWidget):
         self.table_read_num_signal.connect(self._update_table_read_num)
         self.log_text_signal.connect(self._show_to_log)
 
-        self._proxies = []
+        self._proxies = queue.Queue()
         self._lock = threading.Lock()
+        self.setMinimumSize(600, 500)
+
+    def _on_get_proxy(self):
+        """
+        获取代理按钮曹函数
+        :return:
+        """
+        self.log_text_signal.emit('正在获取代理')
+        page = int(self._proxy_input.text())
+        proxy_obj = QuickProxy(page)
+        proxies = proxy_obj.get_all()
+        random.shuffle(proxies)
+        print(proxies)
+        for pro in proxies:
+            self._proxies.put(pro)
+            self.log_text_signal.emit('代理:{}'.format(pro))
+        self.log_text_signal.emit('获取免费代理完成...')
 
     def center(self):
         """
@@ -150,6 +179,24 @@ class Window(QWidget):
 
         h_layout2 = QHBoxLayout()
 
+        proxy_label = QLabel('代理页数')
+        proxy_label.setStyleSheet(LABEL_STYLE_SHEET)
+        self._proxy_input = QLineEdit('5', minimumWidth=2)
+        self._proxy_input.setStyleSheet(LINE_EDIT_STYLE_SHEET)
+        proxy_validator = QIntValidator()
+        proxy_validator.setRange(1, 99)
+        self._proxy_input.setValidator(proxy_validator)
+        self._proxy_btn = QPushButton('获取代理')
+        self._proxy_btn.setStyleSheet(PROXY_BUTTON_STYLE_SHEET)
+
+        self._proxy_check_box = QComboBox()
+        self._proxy_check_box.addItems(PROXY_LIST)
+        self._proxy_check_box.setStyleSheet(CHECK_BOX_SHEET)
+
+        self._visit_model_check_box = QComboBox()
+        self._visit_model_check_box.addItems(VISIT_MODEL)
+        self._visit_model_check_box.setStyleSheet(CHECK_BOX_SHEET)
+
         self._start_btn = QPushButton('开始')   # 开始刷访问量按钮
         self._start_btn.setStyleSheet(START_BUTTON_STYLE_SHEET)
 
@@ -171,6 +218,11 @@ class Window(QWidget):
         h_layout1.addWidget(visit_space_label)
         h_layout1.addWidget(self._visit_space_input)
 
+        h_layout2.addWidget(proxy_label)
+        h_layout2.addWidget(self._proxy_input)
+        h_layout2.addWidget(self._proxy_check_box)
+        h_layout2.addWidget(self._proxy_btn)
+        h_layout2.addWidget(self._visit_model_check_box)
         h_layout2.addWidget(self._start_btn)
         h_layout2.addWidget(self._stop_btn)
         h_layout2.addWidget(self._destroy_btn)
@@ -236,7 +288,8 @@ class Window(QWidget):
 |        那么ClassmateLin就是需要输入的博客名称。                                                      
 |          线程数量多有助于提升效率, 过多会导致电脑卡顿。                                                
 |          访问轮数表示: 访问所有文章的次数，有些文章会随机跳过或多访问几次，提高真实性。                     
-|         访问间隔表示: 访问完一篇文章，隔多久访问下一篇文章。                                            
+|         访问间隔表示: 访问完一篇文章，隔多久访问下一篇文章。                   
+|         直接点击开始，如果因为没有获取到代理直接运行结束，那么先点击获取代理即可。                         
 ****************************************************************************************************/
         """
         self._log_text_browser.append(text)
@@ -250,12 +303,10 @@ class Window(QWidget):
             return
         self._is_start = True
         self._running = True
-        self._get_proxy()
-
+        self._get_proxy_single()
+        threading.Thread(target=self._get_proxies).start()
         self._log_text_browser.append('正在获取博客文章列表...')
-        blog_name = self._blog_name_input.text().strip()
-        art_obj = CSDNArticle(blog_name)
-        articles = art_obj.get_all()
+        articles = self._get_articles()
         self._show_article_to_table(articles)
         self._log_text_browser.append('获取博客文章完成...')
 
@@ -263,6 +314,16 @@ class Window(QWidget):
         self.log_text_signal.emit('开启{}个线程, 开始刷访问量!'.format(str(thread_num)))
         for i in range(thread_num):
             threading.Thread(target=self._visit, args=(articles,)).start()
+
+    def _get_articles(self):
+        """
+        获取博客文章
+        :return:
+        """
+        blog_name = self._blog_name_input.text().strip()
+        art_obj = CSDNArticle(blog_name)
+        articles = art_obj.get_all()
+        return articles
 
     def _visit(self, articles):
         """
@@ -275,6 +336,8 @@ class Window(QWidget):
         while self._running and count < while_num:
             self._visit_single(articles)
             count += 1
+        self._running = False
+        self._is_start = False
 
     def _visit_single(self, articles):
         """
@@ -283,8 +346,13 @@ class Window(QWidget):
         :return:
         """
         visitor = RequestVisitor()
-        for proxy in self._proxies:
+        while self._running and not self._proxies.empty():
             for i in range(len(articles)):
+                proxy = self._proxies.get()
+                self._lock.acquire()
+                if not self._proxies:
+                    self._get_proxy()
+                self._lock.release()
                 if not self._running:
                     self.log_text_signal.emit('停止线程:{}...'.format(str(threading.currentThread().ident)))
                     return
@@ -293,19 +361,13 @@ class Window(QWidget):
                     raw_read_num = int(self._articles_table.item(i, 2).text())  # 文章列表显示的访问量
 
                     read_num = visitor.visit(articles[i]['url'], proxy)
-                    if read_num == 0:  # 表示访问失败, 移除代理
-                        self._lock.acquire()
-                        if len(self._proxies) > 0:
-                            self._proxies.remove(proxy)
-                        if not self._proxies:
-                            self._get_proxy()
-                        self._lock.release()
+                    if read_num == 0:  # 表示访问失败
+                        self.log_text_signal.emit('文章:{}, 代理访问超时...'.format(articles[i]['title']))
                         break
                     if read_num == raw_read_num:  # 重复IP在60秒内访问同一篇文章不会增加访问量
                         self.log_text_signal.emit('访问量增加失败, 同个IP在60秒内访问相同IP不增加访问量!')
                         continue
-                    log_text = '文章:{}访问量+1, 当前访问量:{}, 原访问量:{}'.format(articles[i]['title'],
-                                                                      str(read_num), str(raw_read_num))
+                    log_text = '文章:{}访问量+1, 当前访问量:{}。'.format(articles[i]['title'], str(read_num))
                     self.log_text_signal.emit(log_text)
 
                     self.table_read_num_signal.emit({
@@ -316,18 +378,35 @@ class Window(QWidget):
                     space = int(self._visit_space_input.text())
                     time.sleep(space)
 
-    def _get_proxy(self, page=5):
+    def _get_proxy_single(self):
         """
-        获取代理
+        获取1页代理
         :param page
         :return:
         """
         self.log_text_signal.emit('正在获取免费代理...')
-        proxy_obj = FreeProxy()
-        self._proxies = proxy_obj.get_all()
-        for pro in self._proxies:
+        proxy_obj = QuickProxy(2)
+        proxies = proxy_obj.get_all()
+        print(proxies)
+        proxies.reverse()
+        print(proxies)
+        for pro in proxies:
+            self._proxies.put(pro)
             self.log_text_signal.emit('代理:{}'.format(pro))
         self.log_text_signal.emit('获取免费代理完成...')
+
+    def _get_proxies(self):
+        """
+        多线程补充代理, 60秒补充一次
+        :return:
+        """
+        while True:
+            proxy_obj = QuickProxy(20)
+            proxies = proxy_obj.get_all()
+            for pro in proxies:
+                self._proxies.put(pro)
+                self.log_text_signal.emit('补充代理:{}' .format(pro))
+            time.sleep(60)
 
     def _update_table_read_num(self, data):
         """
