@@ -333,14 +333,15 @@ class XunProxy:
             print(e.args)
             return False
 
-    def get_cur_ip(self, proxy):
+    def get_cur_ip(self):
         """
         检测代理是否可用
         :return:
         """
         url = 'https://api.ipify.org/?format=json'
         try:
-            res = requests.get(url, proxies=proxy, timeout=3).json()
+            res = requests.get(url, headers=self._headers, proxies=self._proxy,
+                               verify=False, allow_redirects=False, timeout=5).json()
             if 'ip' in res:
                 print(res['ip'])
                 return True

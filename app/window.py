@@ -337,6 +337,11 @@ class Window(QWidget):
             order_no = self._order_no.text()
             secret = self._secret.text()
             pro = XunProxy(order_no=order_no, secret=secret)
+            if not pro.get_cur_ip():
+                QMessageBox.information(self, MESSAGE_TITLE, '代理服务器连接失败，请检查秘钥!', QMessageBox.Yes)
+                self._is_start = False
+                self._running = False
+                return
             self.log_text_signal.emit('使用付费动态ip代理...')
             for i in range(thread_num):
                 threading.Thread(target=self.dynamic_proxies_visit, args=(articles, pro.proxy, pro.headers)).start()
