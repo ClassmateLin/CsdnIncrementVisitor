@@ -13,6 +13,10 @@ import execjs
 import re
 import json
 import time
+import hashlib
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class BaseProxy:
@@ -247,8 +251,116 @@ class QuickProxy(BaseProxy):
         return proxies
 
 
+class XunProxy:
+    """
+    讯代理
+    """
+    user_agent_list = [
+        'Mozilla/5.0 (Windows NT 6.2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/28.0.1464.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/31.0.1650.16 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.3319.102 Safari/537.36',
+        'Mozilla/5.0 (X11; CrOS i686 3912.101.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/27.0.1453.116'
+        ' Safari/537.36',
+        'Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/27.0.1453.93 '
+        'Safari/537.36',
+        'Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+        'Chrome/32.0.1667.0 Safari/537.36',
+        'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:17.0) Gecko/20100101 Firefox/17.0.6',
+        'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/28.0.1468.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2224.3 Safari/537.36',
+        'Mozilla/5.0 (X11; CrOS i686 3912.101.0) AppleWebKit/537.36 (KHTML, like Gecko)'
+        ' Chrome/27.0.1453.116 Safari/537.36']
+
+    def __init__(self, order_no='', secret=''):
+        """
+        :param order_no:
+        :param secret:
+        """
+        self._ip = "forward.xdaili.cn"
+        self._port = "80"
+        self._ip_port = self._ip + ":" + self._port
+        self._order_no = order_no
+        self._secret = secret
+        self._proxy = {"http": "http://" + self._ip_port, "https": "https://" + self._ip_port}
+        self._headers = self._get_headers()
+
+    @property
+    def proxy(self):
+        """
+        返回代理
+        :return:
+        """
+        return self._proxy
+
+    @property
+    def headers(self):
+        """
+        返回请求头
+        :return:
+        """
+        self._headers['user-agent'] = random.choice(type(self).user_agent_list)
+        return self._headers
+
+    def _get_headers(self):
+        """
+        获取请求头
+        :return:
+        """
+        timestamp = str(int(time.time()))
+        string = "orderno=" + self._order_no + "," + "secret=" + self._secret + "," + "timestamp=" + timestamp
+        string = string.encode()
+        md5_string = hashlib.md5(string).hexdigest()
+        sign = md5_string.upper()
+        auth = "sign=" + sign + "&" + "orderno=" + self._order_no + "&" + "timestamp=" + timestamp
+        headers = {
+            "Proxy-Authorization": auth,
+            "user-agent": random.choice(type(self).user_agent_list)
+        }
+        return headers
+
+    def test(self, url):
+        """
+        测试访问
+        :param url:
+        :return:
+        """
+        try:
+            res = requests.get(url, headers=self._headers,
+                               proxies=self._proxy, verify=False, allow_redirects=False, timeout=5)
+            if res.status_code == 200:
+                return True
+        except Exception as e:
+            print(e.args)
+            return False
+
+    def get_cur_ip(self, proxy):
+        """
+        检测代理是否可用
+        :return:
+        """
+        url = 'https://api.ipify.org/?format=json'
+        try:
+            res = requests.get(url, proxies=proxy, timeout=3).json()
+            if 'ip' in res:
+                print(res['ip'])
+                return True
+        except Exception as e:
+            return False
+
+
+def get(url, headers, proxy):
+    """
+    :param url
+    :param headers:
+    :param proxies:
+    :return:
+    """
+    res = requests.get(url, headers=headers, proxies=proxy, verify=False, allow_redirects=False, timeout=5)
+    print(res.status_code)
+
+
 if __name__ == '__main__':
-    free_proxy = QuickProxy()
-    proxy_list = free_proxy.get_all()
-    print(proxy_list)
-    print(len(proxy_list))
+    pro = XunProxy()
+    print(pro.get_cur_ip())
+    print(pro.test('https://www.baidu.com'))
+    get('https://www.baidu.com', pro.headers, pro.proxy)

@@ -19,24 +19,20 @@ import threading
 import queue
 from app.background import get_backgound
 from app.article import CSDNArticle
-from app.proxy import FreeProxy, XiCiProxy, SixSixProxy, QuickProxy
+from app.proxy import QuickProxy, XunProxy
 from app.visitor import RequestVisitor
 
-PROXY_LIST = ['快代理', '免费代理', '66代理', '西刺代理']
+PROXY_LIST = ['免费代理', '讯代理(付费)']
 VISIT_MODEL = ['无界面访问', '浏览器访问(需安装驱动)']
 
 PROXY_TITLE_MAP = {
-    0: '快代理',
-    1: '免费代理',
-    2: '66代理',
-    3: '西刺代理'
+    0: '免费代理',
+    1: '讯代理(付费)'
 }
 
 PROXY_CLASS_MAP = {
     0: QuickProxy,
-    1: FreeProxy,
-    2: SixSixProxy,
-    3: XiCiProxy
+    1: XunProxy
 }
 
 
@@ -67,6 +63,7 @@ class Window(QWidget):
         初始化窗体
         """
         super().__init__()
+        self.w_layout = None
 
         self._start_btn = None   # 开始按钮
         self._stop_btn = None    # 结束按钮
@@ -80,6 +77,9 @@ class Window(QWidget):
 
         self._articles_table = None     # 文章表格
         self._log_text_browser = None   # 文本显示
+
+        self._order_no = None
+        self._secret = None
 
         self._proxy_input = None
         self._proxy_check_box = None
@@ -105,6 +105,8 @@ class Window(QWidget):
         self._proxies = queue.Queue()
         self._lock = threading.Lock()
         self.setMinimumSize(600, 500)
+
+        self._articles = []
 
     def _on_get_proxy(self):
         """
@@ -137,7 +139,7 @@ class Window(QWidget):
 
     def setup_ui(self):
         _translate = QtCore.QCoreApplication.translate
-        w_layout = QVBoxLayout()  # 全局布局采用垂直布局
+        self.w_layout = QVBoxLayout()  # 全局布局采用垂直布局
 
         h_layout1 = QHBoxLayout()
 
@@ -233,6 +235,26 @@ class Window(QWidget):
         h_widget2 = QWidget()
         h_widget2.setLayout(h_layout2)
 
+        h_widget3 = QWidget()
+        h_layout3 = QHBoxLayout()
+        h_widget3.setLayout(h_layout3)
+
+        order_label = QLabel('讯代理订单号')
+        order_label.setStyleSheet(LABEL_STYLE_SHEET)
+        h_layout3.addWidget(order_label)
+
+        self._order_no = QLineEdit('ZFxxx')
+        self._order_no.setStyleSheet(LINE_EDIT_STYLE_SHEET)
+        h_layout3.addWidget(self._order_no)
+
+        secret_label = QLabel('讯代理秘钥')
+        secret_label.setStyleSheet(LABEL_STYLE_SHEET)
+        h_layout3.addWidget(secret_label)
+
+        self._secret = QLineEdit('absfasaxxxx')
+        self._secret.setStyleSheet(LINE_EDIT_STYLE_SHEET)
+        h_layout3.addWidget(self._secret)
+
         v_layout = QVBoxLayout()
 
         v_widget = QWidget()
@@ -269,11 +291,12 @@ class Window(QWidget):
         v_layout.addWidget(self._articles_table)
         v_layout.addWidget(log_text_label)
         v_layout.addWidget(self._log_text_browser)
-        w_layout.addWidget(h_widget1)
-        w_layout.addWidget(h_widget2)
-        w_layout.addWidget(v_widget)
+        self.w_layout.addWidget(h_widget1)
+        self.w_layout.addWidget(h_widget2)
+        self.w_layout.addWidget(h_widget3)
+        self.w_layout.addWidget(v_widget)
 
-        self.setLayout(w_layout)
+        self.setLayout(self.w_layout)
 
         palette = QtGui.QPalette()
         self.setWindowOpacity(0.99)
@@ -301,19 +324,41 @@ class Window(QWidget):
         if self._is_start:
             QMessageBox.information(self, MESSAGE_TITLE, '程序已在运行！', QMessageBox.Yes)
             return
+
         self._is_start = True
         self._running = True
-        self._get_proxy_single()
-        threading.Thread(target=self._get_proxies).start()
-        self._log_text_browser.append('正在获取博客文章列表...')
-        articles = self._get_articles()
-        self._show_article_to_table(articles)
-        self._log_text_browser.append('获取博客文章完成...')
+        self.get_articles_and_show_to_table()
+
+        articles = self._articles
 
         thread_num = int(self._thread_num_input.text())
+
+        if self._proxy_check_box.currentIndex() == 1:  # 付费代理
+            order_no = self._order_no.text()
+            secret = self._secret.text()
+            pro = XunProxy(order_no=order_no, secret=secret)
+            self.log_text_signal.emit('使用付费动态ip代理...')
+            for i in range(thread_num):
+                threading.Thread(target=self.dynamic_proxies_visit, args=(articles, pro.proxy, pro.headers)).start()
+        else:
+            threading.Thread(target=self._get_proxy_single).start()
+            threading.Thread(target=self._get_proxies).start()
+
+            for i in range(thread_num):
+                threading.Thread(target=self._visit, args=(articles,)).start()
         self.log_text_signal.emit('开启{}个线程, 开始刷访问量!'.format(str(thread_num)))
-        for i in range(thread_num):
-            threading.Thread(target=self._visit, args=(articles,)).start()
+
+    def get_articles_and_show_to_table(self):
+        """
+        获取文章并显示到窗体
+        :return:
+        """
+        for rowNum in range(0, self._articles_table.rowCount())[::-1]:  # 逆序删除，正序删除会有一些删除不成功
+            self._articles_table.removeRow(rowNum)
+        self._log_text_browser.append('正在获取博客文章列表...')
+        self._articles = self._get_articles()
+        self._show_article_to_table(self._articles)
+        self._log_text_browser.append('获取博客文章完成...')
 
     def _get_articles(self):
         """
@@ -339,6 +384,67 @@ class Window(QWidget):
         self._running = False
         self._is_start = False
 
+    def dynamic_proxies_visit(self, articles, proxy, headers):
+        """
+        动态代理访问
+        :param articles
+        :param proxy:
+        :param headers:
+        :return:
+        """
+        visitor = RequestVisitor()
+        while self._running:
+            for i in range(len(articles)):
+                if not self._running:
+                    self.log_text_signal.emit('停止线程:{}...'.format(str(threading.currentThread().ident)))
+                    return
+                is_visit = random.choice([True, False])
+                if is_visit:
+                    raw_read_num = int(self._articles_table.item(i, 2).text())  # 文章列表显示的访问量
+                    read_num = visitor.visit(articles[i]['url'], proxy, headers)
+                    if read_num == 0:
+                        self.log_text_signal.emit('代理连接失败, 请检查秘钥和订单号!')
+                        return
+                    self.update_table_view(articles, i, read_num, raw_read_num)
+        self._is_start = False
+        self.log_text_signal.emit('停止线程:{}, 任务已完成...'.format(str(threading.currentThread().ident)))
+
+    def update_table_view(self, articles, i, read_num, raw_read_num):
+        """
+        更新视图
+        :param articles:
+        :param i:
+        :param read_num:
+        :param raw_read_num:
+        :return:
+        """
+        if read_num == 0:  # 表示访问失败
+            self.log_text_signal.emit('文章:{}, 代理访问超时...'.format(articles[i]['title']))
+            return
+        if read_num == raw_read_num:  # 重复IP在60秒内访问同一篇文章不会增加访问量
+            self.log_text_signal.emit('访问量增加失败, 同个IP在60秒内访问相同IP不增加访问量!')
+            return
+        log_text = '文章:{}访问量+1, 当前访问量:{}。'.format(articles[i]['title'], str(read_num))
+        self.log_text_signal.emit(log_text)
+
+        self.table_read_num_signal.emit({
+            'row': i,
+            'col': 2,
+            'text': str(read_num)
+        })
+        space = int(self._visit_space_input.text())
+        time.sleep(space)
+
+    def _is_reset_proxy(self):
+        """
+        是否重置代理
+        :return:
+        """
+        self._lock.acquire()
+        if not self._proxies:
+            self._get_proxy()
+        self._lock.release()
+
     def _visit_single(self, articles):
         """
         访问文章
@@ -347,36 +453,19 @@ class Window(QWidget):
         """
         visitor = RequestVisitor()
         while self._running and not self._proxies.empty():
+            proxy = self._proxies.get()
             for i in range(len(articles)):
-                proxy = self._proxies.get()
-                self._lock.acquire()
-                if not self._proxies:
-                    self._get_proxy()
-                self._lock.release()
                 if not self._running:
                     self.log_text_signal.emit('停止线程:{}...'.format(str(threading.currentThread().ident)))
                     return
+                self._is_reset_proxy()
                 is_visit = random.choice([True, False])
                 if is_visit:
                     raw_read_num = int(self._articles_table.item(i, 2).text())  # 文章列表显示的访问量
 
                     read_num = visitor.visit(articles[i]['url'], proxy)
-                    if read_num == 0:  # 表示访问失败
-                        self.log_text_signal.emit('文章:{}, 代理访问超时...'.format(articles[i]['title']))
-                        break
-                    if read_num == raw_read_num:  # 重复IP在60秒内访问同一篇文章不会增加访问量
-                        self.log_text_signal.emit('访问量增加失败, 同个IP在60秒内访问相同IP不增加访问量!')
-                        continue
-                    log_text = '文章:{}访问量+1, 当前访问量:{}。'.format(articles[i]['title'], str(read_num))
-                    self.log_text_signal.emit(log_text)
 
-                    self.table_read_num_signal.emit({
-                        'row': i,
-                        'col': 2,
-                        'text': str(read_num)
-                    })
-                    space = int(self._visit_space_input.text())
-                    time.sleep(space)
+                    self.update_table_view(articles, i, read_num, raw_read_num)
 
     def _get_proxy_single(self):
         """
@@ -387,9 +476,7 @@ class Window(QWidget):
         self.log_text_signal.emit('正在获取免费代理...')
         proxy_obj = QuickProxy(2)
         proxies = proxy_obj.get_all()
-        print(proxies)
         proxies.reverse()
-        print(proxies)
         for pro in proxies:
             self._proxies.put(pro)
             self.log_text_signal.emit('代理:{}'.format(pro))
@@ -430,7 +517,13 @@ class Window(QWidget):
                 self._articles_table.setItem(row, j, item)
 
     def _show_to_log(self, text):
+        """
+        显示文字并滚动到最后
+        :param text:
+        :return:
+        """
         self._log_text_browser.append(text)
+        self._log_text_browser.moveCursor(self._log_text_browser.textCursor().End)
 
     def stop(self):
         self._running = False
@@ -445,6 +538,13 @@ class Window(QWidget):
         is_ok = QMessageBox.question(self, MESSAGE_TITLE, '确认退出程序?', QMessageBox.Yes | QMessageBox.No)
         if is_ok == QMessageBox.Yes:
             os._exit(5)
+
+    def select_visit_model(self):
+        """
+        选择访问模式
+        :return:
+        """
+        pass
 
 
 def start_window():

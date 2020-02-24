@@ -60,16 +60,19 @@ class RequestVisitor(Visitor):
         user_agent = random.choice(user_agent_list)
         self._headers['User-Agent'] = user_agent
 
-    def visit(self, url, proxy):
+    def visit(self, url, proxy, headers=None):
         """
         访问链接
         :param url:
+        :param headers:
         :param proxy:
         :return:
         """
+        if not headers:
+            headers = self._headers
         self._refresh_headers()
         try:
-            resp = requests.get(url, headers=self._headers, proxies=proxy, verify=False, allow_redirects=False,
+            resp = requests.get(url, headers=headers, proxies=proxy, verify=False, allow_redirects=False,
                                 timeout=5)
             if resp.status_code == 200:
                 soup = BeautifulSoup(resp.text, 'html.parser')
