@@ -9,7 +9,7 @@ import os
 import sys
 import random
 import time
-from PyQt5.QtWidgets import QLineEdit, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QComboBox
+from PyQt5.QtWidgets import QLineEdit, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QComboBox, QFileDialog
 from PyQt5.QtWidgets import QWidget, QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView, QTextBrowser
 from PyQt5.QtGui import QIntValidator, QFont
 from PyQt5 import QtCore, QtGui
@@ -42,6 +42,7 @@ LABEL_STYLE_SHEET = "QLabel{border:2px groove gray;border-radius:10px;padding:2p
 START_BUTTON_STYLE_SHEET = "QPushButton{border:2px groove gray;border-radius:10px;padding:2px 4px;color:green;}"
 PROXY_BUTTON_STYLE_SHEET = "QPushButton{border:2px groove gray;border-radius:10px;padding:2px 4px;color:black;}"
 STOP_BUTTON_STYLE_SHEET = "QPushButton{border:2px groove gray;border-radius:10px;padding:2px 4px;color:yellow;}"
+IMPORT_BUTTON_STYLE_SHEET = "QPushButton{border:2px groove gray;border-radius:10px;padding:2px 4px;color:blue;}"
 DESTROY_BUTTON_STYLE_SHEET = "QPushButton{border:2px groove gray;border-radius:10px;padding:2px 4px;color:red;}"
 TEXT_BROWSER_STYLE_SHEET = "QTextBrowser{border:2px groove gray;border-radius:10px;padding:2px 4px;color:black;}"
 TABLE_STYLE_SHEET = "QTableWidget{border:2px groove gray;border-radius:10px;padding:2px 4px;color:black;}"
@@ -74,6 +75,7 @@ class Window(QWidget):
         self._thread_num_input = None   # 线程数输入
         self._while_num_input = None    # 轮数输入
         self._visit_space_input = None  # 访问间隔输入
+        self._import_proxy_btn = None
 
         self._articles_table = None     # 文章表格
         self._log_text_browser = None   # 文本显示
@@ -93,8 +95,9 @@ class Window(QWidget):
         self._init_log_text()
         self._start_btn.clicked.connect(self.start)  # 开始
         self._stop_btn.clicked.connect(self.stop)  # 终止
-        self._destroy_btn.clicked.connect(self.destroy)
-        self._proxy_btn.clicked.connect(self._on_get_proxy)
+        self._destroy_btn.clicked.connect(self.destroy)  # 退出
+        self._proxy_btn.clicked.connect(self._on_get_proxy)  # 获取代理
+        self._import_proxy_btn.clicked.connect(self.import_proxy)  # 导入代理
 
         self._is_start = False  # 标志是否已经开始
         self._running = True   # 标识是否运行改为, False子线程会退出
@@ -255,6 +258,10 @@ class Window(QWidget):
         self._secret.setStyleSheet(LINE_EDIT_STYLE_SHEET)
         h_layout3.addWidget(self._secret)
 
+        self._import_proxy_btn = QPushButton('文件导入代理')
+        self._import_proxy_btn.setStyleSheet(IMPORT_BUTTON_STYLE_SHEET)
+        h_layout3.addWidget(self._import_proxy_btn)
+
         v_layout = QVBoxLayout()
 
         v_widget = QWidget()
@@ -311,8 +318,9 @@ class Window(QWidget):
 |        那么ClassmateLin就是需要输入的博客名称。                                                      
 |          线程数量多有助于提升效率, 过多会导致电脑卡顿。                                                
 |          访问轮数表示: 访问所有文章的次数，有些文章会随机跳过或多访问几次，提高真实性。                     
-|         访问间隔表示: 访问完一篇文章，隔多久访问下一篇文章。                   
-|         直接点击开始，如果因为没有获取到代理直接运行结束，那么先点击获取代理即可。                         
+|          访问间隔表示: 访问完一篇文章，隔多久访问下一篇文章。                   
+|          需要先获取代理，或者从文件导入代理, 然后点开始运行。详情见https://github.com/ClassmateLin/csdn-increment-visitor。
+|          实现原理见博文: https://blog.csdn.net/ClassmateLin/article/details/104423904       
 ****************************************************************************************************/
         """
         self._log_text_browser.append(text)
@@ -336,19 +344,18 @@ class Window(QWidget):
         if self._proxy_check_box.currentIndex() == 1:  # 付费代理
             order_no = self._order_no.text()
             secret = self._secret.text()
+
             pro = XunProxy(order_no=order_no, secret=secret)
-            if not pro.get_cur_ip():
-                QMessageBox.information(self, MESSAGE_TITLE, '代理服务器连接失败，请检查秘钥!', QMessageBox.Yes)
-                self._is_start = False
-                self._running = False
-                return
             self.log_text_signal.emit('使用付费动态ip代理...')
             for i in range(thread_num):
                 threading.Thread(target=self.dynamic_proxies_visit, args=(articles, pro.proxy, pro.headers)).start()
         else:
-            threading.Thread(target=self._get_proxy_single).start()
-            threading.Thread(target=self._get_proxies).start()
-
+            if self._proxies.qsize() == 0:
+                QMessageBox.information(self, MESSAGE_TITLE, '使用免费代理请先获取代理或导入代理！', QMessageBox.Yes)
+                self._is_start = False
+                self._running = False
+                self.log_text_signal.emit('未获取/导入代理, 程序启动失败!')
+                return
             for i in range(thread_num):
                 threading.Thread(target=self._visit, args=(articles,)).start()
         self.log_text_signal.emit('开启{}个线程, 开始刷访问量!'.format(str(thread_num)))
@@ -402,14 +409,15 @@ class Window(QWidget):
             for i in range(len(articles)):
                 if not self._running:
                     self.log_text_signal.emit('停止线程:{}...'.format(str(threading.currentThread().ident)))
+                    self._is_start = False
                     return
                 is_visit = random.choice([True, False])
                 if is_visit:
                     raw_read_num = int(self._articles_table.item(i, 2).text())  # 文章列表显示的访问量
                     read_num = visitor.visit(articles[i]['url'], proxy, headers)
                     if read_num == 0:
-                        self.log_text_signal.emit('代理连接失败, 请检查秘钥和订单号!')
-                        return
+                        self.log_text_signal.emit('代理连接失败...')
+                        continue
                     self.update_table_view(articles, i, read_num, raw_read_num)
         self._is_start = False
         self.log_text_signal.emit('停止线程:{}, 任务已完成...'.format(str(threading.currentThread().ident)))
@@ -427,7 +435,7 @@ class Window(QWidget):
             self.log_text_signal.emit('文章:{}, 代理访问超时...'.format(articles[i]['title']))
             return
         if read_num == raw_read_num:  # 重复IP在60秒内访问同一篇文章不会增加访问量
-            self.log_text_signal.emit('访问量增加失败, 同个IP在60秒内访问相同IP不增加访问量!')
+            self.log_text_signal.emit('文章:{}, 访问量增加失败...'.format(articles[i]['title']))
             return
         log_text = '文章:{}访问量+1, 当前访问量:{}。'.format(articles[i]['title'], str(read_num))
         self.log_text_signal.emit(log_text)
@@ -466,8 +474,9 @@ class Window(QWidget):
                 self._is_reset_proxy()
                 is_visit = random.choice([True, False])
                 if is_visit:
+                    self._lock.acquire()
                     raw_read_num = int(self._articles_table.item(i, 2).text())  # 文章列表显示的访问量
-
+                    self._lock.release()
                     read_num = visitor.visit(articles[i]['url'], proxy)
 
                     self.update_table_view(articles, i, read_num, raw_read_num)
@@ -550,6 +559,36 @@ class Window(QWidget):
         :return:
         """
         pass
+
+    def import_proxy(self):
+        """
+        导入代理
+        :return:
+        """
+        file_select = QFileDialog.getOpenFileName(self, '导入代理', os.path.abspath(os.getcwd()), 'Text Files (*.txt)')
+        if not file_select[0]:
+            self.log_text_signal.emit('未选择文件!')
+            return
+        self.log_text_signal.emit('选择从文件: {}导入!'.format(file_select[0]))
+        try:
+            data = []
+            with open(file_select[0], 'r', encoding='utf-8-sig') as f:
+                for line in f:
+                    proxy = {
+                        'http': 'http://{}'.format(line.strip()),
+                    }
+                    data.append(proxy)
+            random.shuffle(data)
+            for pro in data:
+                self._proxies.put(pro)
+                self.log_text_signal.emit('导入一条代理:{}'.format(pro))
+
+            self.log_text_signal.emit('成功导入{}个代理.'.format(str(self._proxies.qsize())))
+
+        except Exception as e:
+            print(e.args)
+            self.log_text_signal.emit('导入失败: ' + str(e.args))
+            QMessageBox.information(self, MESSAGE_TITLE, '导入代理失败，请检测文件内容格式和编码(utf8)！', QMessageBox.Yes)
 
 
 def start_window():

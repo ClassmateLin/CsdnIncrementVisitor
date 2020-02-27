@@ -118,8 +118,7 @@ class SixSixProxy(BaseProxy):
 
         urls = [
             "http://www.66ip.cn/mo.php?sxb=&tqsl={}&port=&export=&ktip=&sxa=&submit=%CC%E1++%C8%A1&textarea=",
-            "http://www.66ip.cn/nmtq.php?getnum={}&isp=0&anonymoustype=0&s"
-            "tart=&ports=&export=&ipaddress=&area=0&proxytype=2&api=66ip"
+            "http://www.66ip.cn/nmtq.php?getnum={}&isp=0&anonymoustype=0&start=&ports=&export=&ipaddress=&area=0&proxytype=2&api=66ip"
         ]
         try:
 
@@ -360,8 +359,49 @@ def get(url, headers, proxy):
     print(res.status_code)
 
 
+def visit(proxy, headers):
+    """
+    :return:
+    """
+
+    def _visit(url, proxy, headers=None):
+        """
+        访问链接
+        :param url:
+        :param headers:
+        :param proxy:
+        :return:
+        """
+        try:
+            resp = requests.get(url, headers=headers, proxies=proxy, verify=False, allow_redirects=False,
+                                timeout=5)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                read_num_text = soup.find('span', {'class': 'read-count'}).text
+                read_num = re.findall(r"\d+", read_num_text)[0]
+                print(read_num)
+                return int(read_num)
+            return 0
+
+        except Exception as e:
+            print(e.args)
+            return 0
+
+    while True:
+        _visit('https://blog.csdn.net/ClassmateLin/article/details/104495018', proxy, headers)
+        time.sleep(0.2)
+
+
 if __name__ == '__main__':
-    pro = XunProxy()
-    print(pro.get_cur_ip())
-    print(pro.test('https://www.baidu.com'))
-    get('https://www.baidu.com', pro.headers, pro.proxy)
+
+    proxy = {
+        'http': 'http://' + '217.219.61.6:8080'
+    }
+    headers = {
+        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6)'
+                      ' AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.116 Safari/537.36'
+    }
+    pro = BaseProxy(10)
+    pro.check_proxy(proxy)
+
+

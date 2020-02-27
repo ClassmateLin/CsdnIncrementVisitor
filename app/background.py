@@ -16,7 +16,7 @@ def get_backgound():
     """
     :return:
     """
-    filename = 'bg.jpg'
+    filename = '.bg.jpg'
     cur_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
     image_path = os.path.join(cur_dir, filename)
     if not os.path.exists(image_path):
