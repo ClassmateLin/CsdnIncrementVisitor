@@ -50,7 +50,7 @@
 ### 注意
 
 - 推荐使用文件导入代理方式。
-- 软件使用原理可以见[博文](https://blog.csdn.net/ClassmateLin/article/details/104423904)。
+- 软件开发原理可以见[博文](https://blog.csdn.net/ClassmateLin/article/details/104423904)。
 ## 运行效果
 
 
