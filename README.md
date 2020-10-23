@@ -1,7 +1,5 @@
 # CSDN自动刷访问量软件
 
-**CSDN于2020-02-27已升级，该软件已无法使用。**
-
 ## 实现功能
 - 爬取西刺代理，66IP，快代理, FreeProxy站点代理。
 - 自动爬取CSDN的所有文章。
@@ -57,4 +55,9 @@
 [MAC运行效果](./mac_effect.png)
 
 [win7运行效果](./win7_effect.png)
+
+
+### 更多
+
+请关注[个人博客](https://www.classmatelin.top).
 
