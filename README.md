@@ -57,7 +57,6 @@
 [win7运行效果](./win7_effect.png)
 
 
-### 更多
 
-请关注[个人博客](https://www.classmatelin.top).
 
+**更多内容, 请关注个人博客:**`https://www.classmatelin.top`
